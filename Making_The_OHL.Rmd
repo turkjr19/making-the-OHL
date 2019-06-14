@@ -1,0 +1,158 @@
+---
+title: ""
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(rvest)
+library(RCurl)
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(ggthemes)
+library(TTR)
+```
+<center>
+### I get asked all the time... How many players drafted "make the OHL?"
+</center><br>
+
+#### Project Scope
+The scope of this project was to determine the **percentage of players by draft year to play a minimum of one (1) OHL career game.**  I used one (1) game played as a minimum because teams need to commit financial resources to players who play a minimum of one (1) game.
+
+My hypothesis was; the percentage of drafted players playing a minimum of one (1) game in the OHL has remained constant over the past twelve (12) year period. <br><br>
+
+#### Data
+OHL draft data from 2006 to 2017 was used.  I started with draft year 2006 because new rules and paradigms in hockey were established post 04-05 NHL lockout.  I used 2017 as the cutoff to give every draft cohort a two year opportunity to play a game in the OHL. <br>
+I collected data from eliteprospects.com on June 13, 2019. OHL drafts from 2006 to 2017 (12 year period) were collated using R. <br><br>
+
+#### Let's get started:
+Read in the csv file.  CSV file was created utilizing a variety of scripts in R which is outside the project scope.
+
+```{r echo=TRUE}
+#read in the data
+ohl.data <- read.csv("ohl_data.csv") #read csv file
+ohl.data <- as_tibble(ohl.data) #create a tibble from csv dataframe
+```
+
+#### Data Preparation
+
+I use scripts to summarise the OHL tibble. See comments to further understand how the entire dataframe was grouped, summarised, filtered and the necessary data was produced.
+
+```{r echo=TRUE, warning=FALSE}
+#analyse how many players were drafted in each draft year
+#analyse how many games played by players per draft year
+p_gp <- ohl.data %>% #create new tibble based on scraped ohl_draft tibble
+  group_by(draft.year, gp) %>% #group by draft year and games played
+  summarise(drafted = n()) %>% #get a count of players drafted by draft year
+  summarise_each(funs(sum)) #sum the number of games played by players per draft year
+```
+```{r echo=TRUE}
+p1_gp <- ohl.data %>% #create new tibble based on scraped ohl_draft tibble
+  filter(gp>=1) %>% #filter only players that played 10 or more games
+  group_by(draft.year, gp) %>% #group by draft year and games played
+  summarise(min.one = n()) %>% #get a count of players by draft year
+  summarise_each(funs(sum)) #sum the number of games played by players per draft year
+```
+
+I then combine both  objects to create a tibble that will contain the data necessary to plot the percentage of skaters to play 1 game by draft year.
+
+```{r echo=TRUE}
+perc_gp1 <- left_join(p_gp, p1_gp,
+                       by = "draft.year", type = "left", match = "all") %>% #join both tibbles
+  mutate(percent.make = (min.one/drafted)*100) %>% #create column with percentage
+  mutate_at(6, funs(round(., 0))) %>% #round the values
+  select(draft.year, drafted, min.one, percent.make) #select the columns necessary
+```
+
+#### Data
+Let's take a look at the percentages of players who have played at least one (1) game in the OHL by draft year.  Below is a table showing draft year, the number of players drafted, the number of players who played 1 game and the percentage of players who played 1 game per draft year.
+```{r}
+print(perc_gp1) #print tibble for analysis
+```
+
+#### Analysis
+A quick evaluation of the plot below shows a trendline that remains relatively constant but with a slight downward trend towards the latest drafts. To highlight the downward trend a new plot is produced with the y-axis limited to the range of values within the percent.make column.<br>
+
+```{r plot, echo=FALSE}
+#scatterplot
+plot <- ggplot(perc_gp1, aes(draft.year, percent.make)) + 
+  geom_point() +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(title = 'Percentage of Players playing 1 game in the OHL by Draft Year') +
+  labs(subtitle = "") +
+  labs(caption = 'data retrieved from eliteprospects.com') +
+  labs(x='Round Drafted') +
+  labs(y='% of Players playing min 1 game in the OHL') +
+  scale_x_discrete(limits = c(2006,
+                              2007, 2008, 2009, 2010,
+                              2011, 2012, 2013, 2014,
+                              2015, 2016, 2017)) +
+  scale_y_continuous(limits = c(0, 100)) +
+  theme_stata(base_size = 10, base_family = 'Menlo')
+
+plot
+```
+
+As the plot below shows, more investigation into this downward trend is necessary.  I'm not convinced the drop of ~12% from draft year 2016 to draft year 2017 is due to the 2017 draft class only having a two year opportunity to play one (1) game.  Historical empirical knowledge has shown very few players play their first OHL game in year three (3) of their opportunity.
+
+```{r plot2, echo=FALSE}
+#scatterplot
+plot2 <- ggplot(perc_gp1, aes(draft.year, percent.make)) + 
+  geom_point() +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(title = 'Percentage of Players playing 1 game in the OHL by Draft Year') +
+  labs(subtitle = "") +
+  labs(caption = 'data retrieved from eliteprospects.com') +
+  labs(x='Round Drafted') +
+  labs(y='% of Players playing min 1 game in the OHL') +
+  scale_x_discrete(limits = c(2006,
+                              2007, 2008, 2009, 2010,
+                              2011, 2012, 2013, 2014,
+                              2015, 2016, 2017)) +
+  #scale_y_continuous(limits = c(0, 100)) + #remove y-axis forced limits
+  theme_stata(base_size = 10, base_family = 'Menlo')
+
+plot2
+```
+
+To dig deeper into this downward trendline let's take a look at a two (2) year rolling average table with a new column labelled ra.  A further plot is produced to show the trendline of the two (2) year rolling average.
+
+```{r echo=TRUE}
+ra_gp1 <- perc_gp1 %>% mutate(ra = runMean(percent.make, 2)) #calculate 2 year running average
+print(ra_gp1) #print tibble for analysis
+```
+
+
+```{r plot3, echo=FALSE, warning=FALSE}
+#scatterplot
+plot3 <- ggplot(ra_gp1, aes(draft.year, ra)) + 
+  geom_point() +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(title = 'Percentage of Players playing 1 game in the OHL by Draft Year') +
+  labs(subtitle = "2 year rolling average") +
+  labs(caption = 'data retrieved from eliteprospects.com') +
+  labs(x='Round Drafted') +
+  labs(y='Percentages as a 2yr rolling average') +
+  scale_x_discrete(limits = c(2006,
+                              2007, 2008, 2009, 2010,
+                              2011, 2012, 2013, 2014,
+                              2015, 2016, 2017)) +
+  scale_y_continuous(limits = c(0, 100)) + #remove y-axis forced limits
+  theme_stata(base_size = 10, base_family = 'Menlo')
+
+plot3
+```
+
+Of note, the two year rolling average of percentage of players playing a minimum of one (1) OHL game has been on a steady downward decline since 2012 and will continue in this trajectory if we believe the 2017 draft cohort will not increase after their third year of "making the OHL" opportunity.<br>
+
+Further evaluation will be necessary in the Spring of 2020 to verify findings. <br>
+
+report produced by: Clair Cornish<br>
+report produced for: Guelph Storm<br><br><br><br>
+June 14, 2019
